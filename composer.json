@@ -1,0 +1,80 @@
+{
+    "name": "libinkk/modular",
+    "description": "Enterprise-grade Laravel modular architecture package with automatic module discovery, code generators, CRUD scaffolding, repository pattern, service layer, DTO/action workflow, and zero-configuration project scaling.",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "modular",
+        "modular architecture",
+        "laravel modules",
+        "php package",
+        "enterprise laravel",
+        "scalable architecture",
+        "clean architecture",
+        "ddd",
+        "repository pattern",
+        "service layer",
+        "dto",
+        "action classes",
+        "crud generator",
+        "code generation",
+        "module discovery",
+        "auto registration",
+        "laravel automation",
+        "maintainable code",
+        "large scale applications",
+        "business modules",
+        "rapid development",
+        "developer productivity",
+        "api development"
+    ],
+    "homepage": "https://www.libinkk.in",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Libin K K",
+            "email": "libinkk1999@gmail.com",
+            "homepage": "https://www.libinkk.in",
+            "role": "Author"
+        }
+    ],
+    "support": {
+        "docs": "https://www.libinkk.in",
+        "source": "https://www.libinkk.in",
+        "issues": "https://www.libinkk.in"
+    },
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "phpunit/phpunit": "^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Libinkk\\Modular\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Libinkk\\Modular\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Libinkk\\Modular\\Providers\\ModularServiceProvider"
+            ]
+        },
+        "author_contact": {
+            "mobile": "+917708782197",
+            "website": "https://www.libinkk.in"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "scripts": {
+        "test": "phpunit"
+    }
+}

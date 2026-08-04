@@ -1,0 +1,32 @@
+﻿# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and cache
+*.log
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/bootstrap/cache/*
+
+# Build / test artifacts
+/public/build/
+/public/hot
+/coverage/
+.phpunit.result.cache
+
+.cursor/
+.cursor/skills/
+.cursor/skills/**
