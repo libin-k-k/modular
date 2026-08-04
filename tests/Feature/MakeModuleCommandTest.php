@@ -17,7 +17,6 @@ class MakeModuleCommandTest extends TestCase
 
         $this->modulesPath = (string) config('modular.modules_path');
         $files = new Filesystem();
-        $files->deleteDirectory(dirname($this->modulesPath) . DIRECTORY_SEPARATOR . 'bootstrap');
         $files->deleteDirectory($this->modulesPath);
         $files->ensureDirectoryExists($this->modulesPath);
     }
@@ -32,5 +31,12 @@ class MakeModuleCommandTest extends TestCase
         $this->assertFileExists($this->modulesPath . '/User/Providers/UserServiceProvider.php');
         $this->assertFileExists($this->modulesPath . '/User/Routes/web.php');
         $this->assertFileExists($this->modulesPath . '/User/Routes/api.php');
+
+        $providerContent = file_get_contents($this->modulesPath . '/User/Providers/UserServiceProvider.php') ?: '';
+        $this->assertStringContainsString("\$this->loadRoutesFrom(__DIR__ . '/../Routes/web.php');", $providerContent);
+        $this->assertStringContainsString("\$this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');", $providerContent);
+        $this->assertStringContainsString("\$this->loadViewsFrom(__DIR__ . '/../Views', 'user');", $providerContent);
+        $this->assertStringContainsString("\$this->loadTranslationsFrom(__DIR__ . '/../Lang', 'user');", $providerContent);
+        $this->assertStringContainsString('mergeConfigFrom', $providerContent);
     }
 }

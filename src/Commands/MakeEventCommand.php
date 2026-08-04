@@ -6,7 +6,7 @@ namespace Libinkk\Modular\Commands;
 
 class MakeEventCommand extends BaseMakeArtifactCommand
 {
-    protected $signature = 'modular:event {module : Module name} {name : Event class path/name}';
+    protected $signature = 'modular:event {target : Module name OR class path/name} {name? : Class path/name when module is first argument} {--module= : Module name when using name-first style} {--m= : Module name alias}';
     protected $description = 'Generate an event class inside a module.';
 
     protected function artifactType(): string

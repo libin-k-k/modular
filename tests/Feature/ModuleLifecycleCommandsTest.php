@@ -25,6 +25,11 @@ class ModuleLifecycleCommandsTest extends TestCase
 
         $modulePath = $this->modulesPath . '/Catalog';
         $files->ensureDirectoryExists($modulePath);
+        $files->ensureDirectoryExists($modulePath . '/Providers');
+        $files->put(
+            $modulePath . '/Providers/CatalogServiceProvider.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace Modules\\Catalog\\Providers;\n\nuse Illuminate\\Support\\ServiceProvider;\n\nclass CatalogServiceProvider extends ServiceProvider\n{\n    public function register(): void\n    {\n    }\n\n    public function boot(): void\n    {\n    }\n}\n"
+        );
         $files->put(
             $modulePath . '/module.json',
             json_encode([
@@ -170,5 +175,12 @@ class ModuleLifecycleCommandsTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDirectoryDoesNotExist($this->modulesPath . '/Catalog');
+    }
+
+    public function test_doctor_passes_for_healthy_modules(): void
+    {
+        $this->artisan('modular:doctor')
+            ->expectsOutputToContain('Doctor check passed.')
+            ->assertSuccessful();
     }
 }

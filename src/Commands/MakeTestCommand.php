@@ -6,7 +6,7 @@ namespace Libinkk\Modular\Commands;
 
 class MakeTestCommand extends BaseMakeArtifactCommand
 {
-    protected $signature = 'modular:test {module : Module name} {name : Test class path/name}';
+    protected $signature = 'modular:test {target : Module name OR class path/name} {name? : Class path/name when module is first argument} {--module= : Module name when using name-first style} {--m= : Module name alias}';
     protected $description = 'Generate a test class inside a module.';
 
     protected function artifactType(): string

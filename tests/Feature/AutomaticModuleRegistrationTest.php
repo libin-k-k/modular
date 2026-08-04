@@ -17,6 +17,7 @@ class AutomaticModuleRegistrationTest extends TestCase
     public function test_it_registers_enabled_module_provider_and_routes(): void
     {
         $this->assertSame('yes', config('autoreg.enabled_module_loaded'));
+        $this->assertTrue((bool) config('enabledmodule.settings.sample'));
         $this->get('/enabled-module-ping')->assertOk()->assertSee('enabled');
     }
 

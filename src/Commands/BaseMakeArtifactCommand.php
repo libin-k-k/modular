@@ -12,18 +12,35 @@ abstract class BaseMakeArtifactCommand extends Command
 {
     abstract protected function artifactType(): string;
 
-    public function handle(ModuleScaffolder $scaffolder): int
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function resolveModuleAndName(): array
     {
-        $module = trim((string) $this->argument('module'));
-        $name = trim((string) $this->argument('name'));
+        $target = trim((string) $this->argument('target'));
+        $nameArg = $this->argument('name');
+        $name = is_string($nameArg) ? trim($nameArg) : '';
+        $moduleOption = trim((string) ($this->option('module') ?: $this->option('m') ?: ''));
 
-        if ($module === '' || $name === '') {
-            $this->error('Both module and name are required.');
-
-            return self::FAILURE;
+        if ($target === '') {
+            throw new RuntimeException('Target is required.');
         }
 
+        if ($moduleOption !== '') {
+            return [$moduleOption, $target];
+        }
+
+        if ($name === '') {
+            throw new RuntimeException('Both module and name are required. Use: modular:' . $this->artifactType() . ' Module Name  OR  Name --module=Module');
+        }
+
+        return [$target, $name];
+    }
+
+    public function handle(ModuleScaffolder $scaffolder): int
+    {
         try {
+            [$module, $name] = $this->resolveModuleAndName();
             $created = $scaffolder->createArtifact(
                 (string) config('modular.modules_path', base_path('Modules')),
                 $module,

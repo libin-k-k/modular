@@ -9,17 +9,21 @@ use Illuminate\Support\ServiceProvider;
 use Libinkk\Modular\Commands\CacheModulesCommand;
 use Libinkk\Modular\Commands\ClearModulesCacheCommand;
 use Libinkk\Modular\Commands\DeleteModuleCommand;
+use Libinkk\Modular\Commands\DoctorModulesCommand;
 use Libinkk\Modular\Commands\DisableModuleCommand;
 use Libinkk\Modular\Commands\EnableModuleCommand;
 use Libinkk\Modular\Commands\ListModulesCommand;
 use Libinkk\Modular\Commands\MakeActionCommand;
 use Libinkk\Modular\Commands\MakeControllerCommand;
+use Libinkk\Modular\Commands\MakeCrudCommand;
 use Libinkk\Modular\Commands\MakeDtoCommand;
 use Libinkk\Modular\Commands\MakeEnumCommand;
 use Libinkk\Modular\Commands\MakeEventCommand;
+use Libinkk\Modular\Commands\MakeFactoryCommand;
 use Libinkk\Modular\Commands\MakeJobCommand;
 use Libinkk\Modular\Commands\MakeListenerCommand;
 use Libinkk\Modular\Commands\MakeMiddlewareCommand;
+use Libinkk\Modular\Commands\MakeMigrationCommand;
 use Libinkk\Modular\Commands\MakeModuleCommand;
 use Libinkk\Modular\Commands\MakeModelCommand;
 use Libinkk\Modular\Commands\MakeNotificationCommand;
@@ -28,6 +32,7 @@ use Libinkk\Modular\Commands\MakeRepositoryCommand;
 use Libinkk\Modular\Commands\MakeRequestCommand;
 use Libinkk\Modular\Commands\MakeResourceCommand;
 use Libinkk\Modular\Commands\MakeRuleCommand;
+use Libinkk\Modular\Commands\MakeSeederCommand;
 use Libinkk\Modular\Commands\MakeServiceCommand;
 use Libinkk\Modular\Commands\MakeTestCommand;
 use Libinkk\Modular\Commands\RenameModuleCommand;
@@ -66,6 +71,7 @@ class ModularServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MakeModuleCommand::class,
+                MakeCrudCommand::class,
                 MakeControllerCommand::class,
                 MakeModelCommand::class,
                 MakeRequestCommand::class,
@@ -83,6 +89,9 @@ class ModularServiceProvider extends ServiceProvider
                 MakeEnumCommand::class,
                 MakeRuleCommand::class,
                 MakeTestCommand::class,
+                MakeMigrationCommand::class,
+                MakeFactoryCommand::class,
+                MakeSeederCommand::class,
                 ListModulesCommand::class,
                 EnableModuleCommand::class,
                 DisableModuleCommand::class,
@@ -90,6 +99,7 @@ class ModularServiceProvider extends ServiceProvider
                 ClearModulesCacheCommand::class,
                 RenameModuleCommand::class,
                 DeleteModuleCommand::class,
+                DoctorModulesCommand::class,
             ]);
         }
     }
@@ -117,7 +127,7 @@ class ModularServiceProvider extends ServiceProvider
 
         foreach ($enabledModules as $module) {
             $this->registerModuleProvider($files, $module);
-            $this->registerModuleResources($files, $module);
+            $this->registerModuleViewsLangConfig($files, $module);
         }
     }
 
@@ -135,23 +145,9 @@ class ModularServiceProvider extends ServiceProvider
         }
     }
 
-    private function registerModuleResources(Filesystem $files, Module $module): void
+    private function registerModuleViewsLangConfig(Filesystem $files, Module $module): void
     {
         $moduleLower = strtolower($module->name);
-
-        $webRoutes = $module->path . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'web.php';
-        $apiRoutes = $module->path . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'api.php';
-        if ($files->exists($webRoutes)) {
-            $this->loadRoutesFrom($webRoutes);
-        }
-        if ($files->exists($apiRoutes)) {
-            $this->loadRoutesFrom($apiRoutes);
-        }
-
-        $migrationsPath = $module->path . DIRECTORY_SEPARATOR . 'Database' . DIRECTORY_SEPARATOR . 'Migrations';
-        if ($files->isDirectory($migrationsPath)) {
-            $this->loadMigrationsFrom($migrationsPath);
-        }
 
         $viewsPath = $module->path . DIRECTORY_SEPARATOR . 'Views';
         if ($files->isDirectory($viewsPath)) {
