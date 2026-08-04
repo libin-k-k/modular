@@ -72,16 +72,27 @@ Common problems include:
 
 ```bash
 composer require libinkk/modular
+php artisan modular:install
 ```
 
-After installation, the package automatically:
+`modular:install` creates the `Modules` folder, publishes config, and generates the module cache. It does **not** edit `composer.json`.
 
-- Creates the `Modules` directory
-- Registers the package
-- Publishes configuration
-- Starts discovering modules
+Add PSR-4 to your app `composer.json` yourself:
 
-No manual configuration required.
+```json
+"autoload": {
+    "psr-4": {
+        "Modules\\": "Modules/"
+    }
+}
+```
+
+Then:
+
+```bash
+composer dump-autoload
+php artisan modular:make User
+```
 
 ---
 

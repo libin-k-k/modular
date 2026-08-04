@@ -6,52 +6,50 @@ namespace Libinkk\Modular\Support;
 
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use Libinkk\Modular\Scaffolding\StubFactory;
 use RuntimeException;
 
 class ModuleScaffolder
 {
-    public function __construct(private readonly Filesystem $files)
-    {
+    public function __construct(
+        private readonly Filesystem $files,
+        private readonly StubFactory $stubs = new StubFactory(),
+    ) {
     }
 
-    public function create(string $modulesPath, string $moduleName): string
+    public function create(string $modulesPath, string $moduleName, array $options = []): string
     {
         $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
         if ($this->files->exists($modulePath)) {
             throw new RuntimeException(sprintf('Module [%s] already exists.', $moduleName));
         }
 
-        $directories = [
-            'Controllers',
-            'Requests',
-            'Models',
-            'Services',
-            'Repositories',
-            'Interfaces',
-            'Actions',
-            'DTO',
-            'Traits',
-            'Enums',
-            'Policies',
-            'Rules',
-            'Events',
-            'Listeners',
-            'Jobs',
-            'Notifications',
-            'Resources',
-            'Helpers',
-            'Console',
-            'Database/Migrations',
-            'Database/Seeders',
-            'Database/Factories',
-            'Config',
-            'Routes',
-            'Views',
-            'Lang',
-            'Tests',
-            'Providers',
-            'Middleware',
-        ];
+        $empty = (bool) ($options['empty'] ?? false);
+        $minimal = (bool) ($options['minimal'] ?? false);
+        $apiOnly = (bool) ($options['api'] ?? false);
+        $webOnly = (bool) ($options['web'] ?? false);
+
+        if ($apiOnly && $webOnly) {
+            throw new RuntimeException('Use either --api or --web, not both.');
+        }
+
+        $directories = $empty
+            ? [
+                'Controllers', 'Requests', 'Models', 'Services', 'Repositories', 'Interfaces',
+                'Actions', 'DTO', 'Traits', 'Enums', 'Policies', 'Rules', 'Events', 'Listeners',
+                'Jobs', 'Notifications', 'Resources', 'Helpers', 'Console', 'Database/Migrations',
+                'Database/Seeders', 'Database/Factories', 'Config', 'Routes', 'Views', 'Lang',
+                'Tests', 'Providers', 'Middleware',
+            ]
+            : ($minimal
+                ? ['Controllers', 'Routes', 'Providers']
+                : [
+                    'Controllers', 'Requests', 'Models', 'Services', 'Repositories', 'Interfaces',
+                    'Actions', 'DTO', 'Traits', 'Enums', 'Policies', 'Rules', 'Events', 'Listeners',
+                    'Jobs', 'Notifications', 'Resources', 'Helpers', 'Console', 'Database/Migrations',
+                    'Database/Seeders', 'Database/Factories', 'Config', 'Routes', 'Views', 'Lang',
+                    'Tests', 'Providers', 'Middleware',
+                ]);
 
         foreach ($directories as $directory) {
             $this->files->ensureDirectoryExists($modulePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $directory));
@@ -60,9 +58,15 @@ class ModuleScaffolder
         $manifest = [
             'name' => $moduleName,
             'description' => "{$moduleName} Module",
+            'author' => '',
+            'website' => '',
+            'license' => 'MIT',
+            'priority' => 100,
             'version' => '1.0.0',
             'enabled' => true,
             'dependencies' => [],
+            'providers' => [],
+            'aliases' => [],
         ];
 
         $manifestJson = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
@@ -70,8 +74,74 @@ class ModuleScaffolder
             throw new RuntimeException(sprintf('Could not generate module.json for [%s].', $moduleName));
         }
 
+        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'module.json', $manifestJson . PHP_EOL);
+
+        if ($empty) {
+            return $modulePath;
+        }
+
+        $withWeb = !$apiOnly;
+        $withApi = !$webOnly;
+        if ($minimal) {
+            $withWeb = !$apiOnly;
+            $withApi = !$webOnly;
+        }
+
+        $this->writeModuleProvider($modulePath, $moduleName, $withWeb, $withApi, !$minimal);
+
+        if ($withWeb) {
+            $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'web.php', $this->stubs->webRoutesTemplate($moduleName));
+        }
+        if ($withApi) {
+            $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'api.php', $this->stubs->apiRoutesTemplate($moduleName));
+        }
+
+        if (!$minimal) {
+            $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'config.php', $this->stubs->configTemplate($moduleName));
+            $this->files->ensureDirectoryExists($modulePath . DIRECTORY_SEPARATOR . 'Lang' . DIRECTORY_SEPARATOR . 'en');
+            $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Lang' . DIRECTORY_SEPARATOR . 'en' . DIRECTORY_SEPARATOR . 'messages.php', $this->stubs->langTemplate($moduleName));
+            $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'index.blade.php', $this->stubs->viewTemplate($moduleName, 'index'));
+        }
+
+        return $modulePath;
+    }
+
+    private function writeModuleProvider(
+        string $modulePath,
+        string $moduleName,
+        bool $withWeb,
+        bool $withApi,
+        bool $withExtras
+    ): void {
         $moduleLower = strtolower($moduleName);
         $providerClass = $moduleName . 'ServiceProvider';
+
+        $routeBoot = '';
+        if ($withWeb) {
+            $routeBoot .= "        \$this->loadRoutesFrom(__DIR__ . '/../Routes/web.php');\n\n";
+        }
+        if ($withApi) {
+            $routeBoot .= "        if (file_exists(__DIR__ . '/../Routes/api.php')) {\n            \$this->loadRoutesFrom(__DIR__ . '/../Routes/api.php');\n        }\n\n";
+        }
+
+        $extraBoot = '';
+        if ($withExtras) {
+            $extraBoot = <<<PHP
+        \$this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
+        \$this->loadViewsFrom(__DIR__ . '/../Views', '{$moduleLower}');
+        \$this->loadTranslationsFrom(__DIR__ . '/../Lang', '{$moduleLower}');
+
+        \$configPath = __DIR__ . '/../Config';
+        if (is_dir(\$configPath)) {
+            foreach (glob(\$configPath . '/*.php') ?: [] as \$configFile) {
+                \$this->mergeConfigFrom(\$configFile, '{$moduleLower}.' . basename(\$configFile, '.php'));
+            }
+        }
+PHP;
+        } else {
+            $extraBoot = "        // Minimal module — add migrations/views/lang/config as needed.";
+        }
+
         $providerContent = <<<PHP
 <?php
 
@@ -89,40 +159,132 @@ class {$providerClass} extends ServiceProvider
 
     public function boot(): void
     {
-        \$this->loadRoutesFrom(__DIR__ . '/../Routes/web.php');
-
-        if (file_exists(__DIR__ . '/../Routes/api.php')) {
-            \$this->loadRoutesFrom(__DIR__ . '/../Routes/api.php');
-        }
-
-        \$this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
-        \$this->loadViewsFrom(__DIR__ . '/../Views', '{$moduleLower}');
-        \$this->loadTranslationsFrom(__DIR__ . '/../Lang', '{$moduleLower}');
-
-        \$configPath = __DIR__ . '/../Config';
-        if (is_dir(\$configPath)) {
-            foreach (glob(\$configPath . '/*.php') ?: [] as \$configFile) {
-                \$this->mergeConfigFrom(\$configFile, '{$moduleLower}.' . basename(\$configFile, '.php'));
-            }
-        }
+{$routeBoot}{$extraBoot}
     }
 }
 
 PHP;
 
-        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Providers' . DIRECTORY_SEPARATOR . $providerClass . '.php', $providerContent);
-        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'web.php', "<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\n");
-        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'api.php', "<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\n");
-        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'config.php', "<?php\n\nreturn [\n    //\n];\n");
-        $this->files->put($modulePath . DIRECTORY_SEPARATOR . 'module.json', $manifestJson . PHP_EOL);
-
-        return $modulePath;
+        $this->files->put(
+            $modulePath . DIRECTORY_SEPARATOR . 'Providers' . DIRECTORY_SEPARATOR . $providerClass . '.php',
+            $providerContent
+        );
     }
 
     /**
      * @return list<string>
      */
-    public function createCrud(string $modulesPath, string $moduleName, string $resourceName): array
+    public function createRoute(string $modulesPath, string $moduleName, string $type = 'web'): array
+    {
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
+        $type = strtolower(trim($type));
+        if (!in_array($type, ['web', 'api', 'both'], true)) {
+            throw new RuntimeException('Route type must be web, api, or both.');
+        }
+
+        $created = [];
+        $routesDir = $modulePath . DIRECTORY_SEPARATOR . 'Routes';
+        $this->files->ensureDirectoryExists($routesDir);
+
+        if ($type === 'web' || $type === 'both') {
+            $path = $routesDir . DIRECTORY_SEPARATOR . 'web.php';
+            if ($this->files->exists($path)) {
+                throw new RuntimeException(sprintf('Route file [%s] already exists.', 'web.php'));
+            }
+            $this->files->put($path, $this->stubs->webRoutesTemplate($moduleName));
+            $created[] = $path;
+        }
+
+        if ($type === 'api' || $type === 'both') {
+            $path = $routesDir . DIRECTORY_SEPARATOR . 'api.php';
+            if ($this->files->exists($path)) {
+                throw new RuntimeException(sprintf('Route file [%s] already exists.', 'api.php'));
+            }
+            $this->files->put($path, $this->stubs->apiRoutesTemplate($moduleName));
+            $created[] = $path;
+        }
+
+        return $created;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function createConfig(string $modulesPath, string $moduleName, string $name): array
+    {
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
+        $name = Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/')));
+        if ($name === '') {
+            throw new RuntimeException('Config name is required.');
+        }
+
+        $dir = $modulePath . DIRECTORY_SEPARATOR . 'Config';
+        $this->files->ensureDirectoryExists($dir);
+        $path = $dir . DIRECTORY_SEPARATOR . $name . '.php';
+        if ($this->files->exists($path)) {
+            throw new RuntimeException(sprintf('Config [%s] already exists.', $name));
+        }
+
+        $this->files->put($path, $this->stubs->configTemplate($moduleName, $name));
+
+        return [$path];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function createLang(string $modulesPath, string $moduleName, string $name, string $locale = 'en'): array
+    {
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
+        $name = Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/')));
+        $locale = trim($locale) !== '' ? trim($locale) : 'en';
+        if ($name === '') {
+            throw new RuntimeException('Lang file name is required.');
+        }
+
+        $dir = $modulePath . DIRECTORY_SEPARATOR . 'Lang' . DIRECTORY_SEPARATOR . $locale;
+        $this->files->ensureDirectoryExists($dir);
+        $path = $dir . DIRECTORY_SEPARATOR . $name . '.php';
+        if ($this->files->exists($path)) {
+            throw new RuntimeException(sprintf('Lang file [%s/%s] already exists.', $locale, $name));
+        }
+
+        $this->files->put($path, $this->stubs->langTemplate($moduleName, $name));
+
+        return [$path];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function createView(string $modulesPath, string $moduleName, string $name): array
+    {
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
+        $name = trim(str_replace('\\', '/', $name), '/');
+        if ($name === '') {
+            throw new RuntimeException('View name is required.');
+        }
+
+        $name = str_ends_with($name, '.blade.php') ? substr($name, 0, -10) : $name;
+        $parts = array_values(array_filter(explode('/', $name), static fn (string $part): bool => $part !== ''));
+        $viewName = array_pop($parts) ?: 'index';
+        $nested = $parts !== [] ? implode(DIRECTORY_SEPARATOR, $parts) . DIRECTORY_SEPARATOR : '';
+        $dir = $modulePath . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . $nested;
+        $this->files->ensureDirectoryExists($dir);
+        $path = $dir . $viewName . '.blade.php';
+        if ($this->files->exists($path)) {
+            throw new RuntimeException(sprintf('View [%s] already exists.', $name));
+        }
+
+        $this->files->put($path, $this->stubs->viewTemplate($moduleName, $viewName));
+
+        return [$path];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function createCrud(string $modulesPath, string $moduleName, string $resourceName, bool $api = false): array
     {
         $resourceName = trim($resourceName);
         if ($resourceName === '') {
@@ -140,11 +302,14 @@ PHP;
         $created = [];
 
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'model', $model));
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'repository', $model . 'Repository'));
+        // Service is created by repository generator with constructor DI when missing.
+        if (!$this->files->exists($modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR . $model . 'Service.php')) {
+            $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'service', $model . 'Service'));
+        }
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'controller', $model . 'Controller'));
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Store' . $model . 'Request'));
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Update' . $model . 'Request'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'service', $model . 'Service'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'repository', $model . 'Repository'));
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'dto', $model . 'Data'));
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Create' . $model));
         $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Update' . $model));
@@ -156,10 +321,34 @@ PHP;
         $created = array_merge($created, $this->createFactory($modulesPath, $moduleName, $model . 'Factory'));
         $created = array_merge($created, $this->createSeeder($modulesPath, $moduleName, $model . 'Seeder'));
 
+        if ($api) {
+            $this->applyApiCrudStubs($modulePath, $moduleName, $model);
+        }
+
         $this->appendCrudRoutes($modulePath, $moduleName, $model, $route);
         $created[] = $modulePath . DIRECTORY_SEPARATOR . 'Routes' . DIRECTORY_SEPARATOR . 'api.php';
 
         return $created;
+    }
+
+    private function applyApiCrudStubs(string $modulePath, string $moduleName, string $model): void
+    {
+        $interfaceName = $model . 'RepositoryInterface';
+        $replacements = [
+            'Controllers' . DIRECTORY_SEPARATOR . $model . 'Controller.php' => $this->stubs->apiCrudControllerTemplate($moduleName, $model),
+            'Services' . DIRECTORY_SEPARATOR . $model . 'Service.php' => $this->stubs->apiCrudServiceTemplate($moduleName, $model, $interfaceName),
+            'Repositories' . DIRECTORY_SEPARATOR . $model . 'Repository.php' => $this->stubs->apiCrudRepositoryTemplate($moduleName, $model, $interfaceName),
+            'Interfaces' . DIRECTORY_SEPARATOR . $interfaceName . '.php' => $this->stubs->apiCrudRepositoryInterfaceTemplate($moduleName, $interfaceName),
+            'Requests' . DIRECTORY_SEPARATOR . 'Store' . $model . 'Request.php' => $this->stubs->apiCrudRequestTemplate($moduleName, 'Store' . $model . 'Request'),
+            'Requests' . DIRECTORY_SEPARATOR . 'Update' . $model . 'Request.php' => $this->stubs->apiCrudRequestTemplate($moduleName, 'Update' . $model . 'Request'),
+            'Resources' . DIRECTORY_SEPARATOR . $model . 'Resource.php' => $this->stubs->apiCrudResourceTemplate($moduleName, $model),
+            'Tests' . DIRECTORY_SEPARATOR . $model . 'CrudTest.php' => $this->stubs->apiCrudTestTemplate($moduleName, $model),
+        ];
+
+        foreach ($replacements as $relative => $content) {
+            $path = $modulePath . DIRECTORY_SEPARATOR . $relative;
+            $this->files->put($path, $content);
+        }
     }
 
     /**
@@ -192,7 +381,7 @@ PHP;
             throw new RuntimeException(sprintf('Migration [%s] already exists.', $fileName));
         }
 
-        $this->files->put($filePath, $this->migrationTemplate($table));
+        $this->files->put($filePath, $this->stubs->migrationTemplate($table));
 
         return [$filePath];
     }
@@ -222,7 +411,7 @@ PHP;
             throw new RuntimeException(sprintf('Factory [%s] already exists.', $className));
         }
 
-        $this->files->put($filePath, $this->factoryTemplate($moduleName, $model));
+        $this->files->put($filePath, $this->stubs->factoryTemplate($moduleName, $model));
 
         return [$filePath];
     }
@@ -251,7 +440,7 @@ PHP;
             throw new RuntimeException(sprintf('Seeder [%s] already exists.', $className));
         }
 
-        $this->files->put($filePath, $this->seederTemplate($moduleName, Str::beforeLast($className, 'Seeder') ?: $className));
+        $this->files->put($filePath, $this->stubs->seederTemplate($moduleName, Str::beforeLast($className, 'Seeder') ?: $className));
 
         return [$filePath];
     }
@@ -299,6 +488,9 @@ PHP;
             'enum' => 'Enums',
             'rule' => 'Rules',
             'test' => 'Tests',
+            'trait' => 'Traits',
+            'helper' => 'Helpers',
+            'command' => 'Console',
         ];
 
         if (!isset($map[$type])) {
@@ -333,11 +525,11 @@ PHP;
             $interfaceNamespace = implode('\\', array_filter(array_merge(['Modules', $moduleName, 'Interfaces'], $parts), static fn (string $value): bool => $value !== ''));
             $interfacePath = $interfaceDir . $interfaceName . '.php';
             if (!$this->files->exists($interfacePath)) {
-                $this->files->put($interfacePath, $this->buildRepositoryInterfaceContent($interfaceNamespace, $interfaceName));
+                $this->files->put($interfacePath, $this->stubs->buildRepositoryInterfaceContent($interfaceNamespace, $interfaceName));
                 $created[] = $interfacePath;
             }
 
-            $this->files->put($filePath, $this->repositoryTemplate($namespace, $className, $interfaceNamespace, $interfaceName));
+            $this->files->put($filePath, $this->stubs->repositoryTemplate($namespace, $className, $interfaceNamespace, $interfaceName));
             $created[] = $filePath;
 
             $this->bindRepositoryInProvider(
@@ -347,14 +539,71 @@ PHP;
                 $namespace . '\\' . $className
             );
 
+            $serviceBase = str_ends_with($className, 'Repository')
+                ? substr($className, 0, -strlen('Repository'))
+                : $className;
+            if ($serviceBase !== '') {
+                $serviceName = implode('/', array_merge($parts, [$serviceBase . 'Service']));
+                $servicePath = $modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR
+                    . ($nestedPath !== '' ? $nestedPath : '')
+                    . $serviceBase . 'Service.php';
+                if (!$this->files->exists($servicePath)) {
+                    $serviceCreated = $this->createServiceWithRepository(
+                        $modulesPath,
+                        $moduleName,
+                        $serviceName,
+                        $interfaceNamespace . '\\' . $interfaceName
+                    );
+                    $created = array_merge($created, $serviceCreated);
+                }
+            }
+
             return $created;
         }
 
-        $content = $this->buildClassContent($type, $namespace, $className, $moduleName);
+        $content = $this->stubs->render($type, $namespace, $className, $moduleName);
         $this->files->put($filePath, $content);
         $created[] = $filePath;
 
         return $created;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function createServiceWithRepository(
+        string $modulesPath,
+        string $moduleName,
+        string $serviceName,
+        string $interfaceFqcn
+    ): array {
+        $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
+        $name = trim(str_replace('\\', '/', $serviceName), '/');
+        $parts = array_values(array_filter(explode('/', $name), static fn (string $part): bool => $part !== ''));
+        $className = array_pop($parts);
+        if ($className === null || $className === '') {
+            return [];
+        }
+
+        $nestedPath = $parts !== [] ? implode(DIRECTORY_SEPARATOR, $parts) . DIRECTORY_SEPARATOR : '';
+        $targetDir = $modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR . $nestedPath;
+        $this->files->ensureDirectoryExists($targetDir);
+        $filePath = $targetDir . $className . '.php';
+        if ($this->files->exists($filePath)) {
+            return [];
+        }
+
+        $namespace = implode('\\', array_filter(
+            array_merge(['Modules', $moduleName, 'Services'], $parts),
+            static fn (string $value): bool => $value !== ''
+        ));
+
+        $this->files->put(
+            $filePath,
+            $this->stubs->serviceWithRepositoryTemplate($namespace, $className, $interfaceFqcn)
+        );
+
+        return [$filePath];
     }
 
     private function bindRepositoryInProvider(
@@ -415,555 +664,5 @@ PHP;
         if (!str_contains($existing, "apiResource('{$route}'")) {
             $this->files->put($apiPath, rtrim($existing) . $snippet);
         }
-    }
-
-    private function buildClassContent(string $type, string $namespace, string $className, string $moduleName = ''): string
-    {
-        return match ($type) {
-            'controller' => $this->controllerTemplate($namespace, $className),
-            'model' => $this->modelTemplate($namespace, $className),
-            'request' => $this->requestTemplate($namespace, $className),
-            'service' => $this->serviceTemplate($namespace, $className),
-            'resource' => $this->resourceTemplate($namespace, $className),
-            'event' => $this->eventTemplate($namespace, $className),
-            'listener' => $this->listenerTemplate($namespace, $className),
-            'job' => $this->jobTemplate($namespace, $className),
-            'notification' => $this->notificationTemplate($namespace, $className),
-            'policy' => $this->policyTemplate($namespace, $className),
-            'middleware' => $this->middlewareTemplate($namespace, $className),
-            'dto' => $this->dtoTemplate($namespace, $className),
-            'action' => $this->actionTemplate($namespace, $className),
-            'enum' => $this->enumTemplate($namespace, $className),
-            'rule' => $this->ruleTemplate($namespace, $className),
-            'test' => $this->testTemplate($namespace, $className),
-            default => $this->plainClassTemplate($namespace, $className),
-        };
-    }
-
-    private function plainClassTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-class {$className}
-{
-    //
-}
-
-PHP;
-    }
-
-    private function controllerTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Http\\JsonResponse;
-use Illuminate\\Http\\Request;
-use Illuminate\\Routing\\Controller;
-
-class {$className} extends Controller
-{
-    //
-}
-
-PHP;
-    }
-
-    private function modelTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;
-use Illuminate\\Database\\Eloquent\\Model;
-
-class {$className} extends Model
-{
-    use HasFactory;
-
-    protected \$guarded = [];
-
-    //
-}
-
-PHP;
-    }
-
-    private function requestTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Foundation\\Http\\FormRequest;
-
-class {$className} extends FormRequest
-{
-    public function authorize(): bool
-    {
-        return true;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function rules(): array
-    {
-        return [
-            //
-        ];
-    }
-}
-
-PHP;
-    }
-
-    private function serviceTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-class {$className}
-{
-    //
-}
-
-PHP;
-    }
-
-    private function repositoryTemplate(
-        string $namespace,
-        string $className,
-        string $interfaceNamespace,
-        string $interfaceName
-    ): string {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use {$interfaceNamespace}\\{$interfaceName};
-
-class {$className} implements {$interfaceName}
-{
-    //
-}
-
-PHP;
-    }
-
-    private function resourceTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Http\\Request;
-use Illuminate\\Http\\Resources\\Json\\JsonResource;
-
-class {$className} extends JsonResource
-{
-    /**
-     * @return array<string, mixed>
-     */
-    public function toArray(Request \$request): array
-    {
-        return [
-            //
-        ];
-    }
-}
-
-PHP;
-    }
-
-    private function eventTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Foundation\\Events\\Dispatchable;
-use Illuminate\\Queue\\SerializesModels;
-
-class {$className}
-{
-    use Dispatchable;
-    use SerializesModels;
-
-    //
-}
-
-PHP;
-    }
-
-    private function listenerTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-class {$className}
-{
-    public function handle(object \$event): void
-    {
-        //
-    }
-}
-
-PHP;
-    }
-
-    private function jobTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Bus\\Queueable;
-use Illuminate\\Contracts\\Queue\\ShouldQueue;
-use Illuminate\\Foundation\\Bus\\Dispatchable;
-use Illuminate\\Queue\\InteractsWithQueue;
-use Illuminate\\Queue\\SerializesModels;
-
-class {$className} implements ShouldQueue
-{
-    use Dispatchable;
-    use InteractsWithQueue;
-    use Queueable;
-    use SerializesModels;
-
-    public function handle(): void
-    {
-        //
-    }
-}
-
-PHP;
-    }
-
-    private function notificationTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Bus\\Queueable;
-use Illuminate\\Notifications\\Notification;
-
-class {$className} extends Notification
-{
-    use Queueable;
-
-    /**
-     * @return array<int, string>
-     */
-    public function via(object \$notifiable): array
-    {
-        return ['mail'];
-    }
-
-    //
-}
-
-PHP;
-    }
-
-    private function policyTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Illuminate\\Auth\\Access\\HandlesAuthorization;
-
-class {$className}
-{
-    use HandlesAuthorization;
-
-    //
-}
-
-PHP;
-    }
-
-    private function middlewareTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Closure;
-use Illuminate\\Http\\Request;
-use Symfony\\Component\\HttpFoundation\\Response;
-
-class {$className}
-{
-    public function handle(Request \$request, Closure \$next): Response
-    {
-        //
-
-        return \$next(\$request);
-    }
-}
-
-PHP;
-    }
-
-    private function dtoTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-class {$className}
-{
-    /**
-     * @param array<string, mixed> \$data
-     */
-    public static function fromArray(array \$data): self
-    {
-        return new self();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toArray(): array
-    {
-        return [
-            //
-        ];
-    }
-}
-
-PHP;
-    }
-
-    private function actionTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-class {$className}
-{
-    public function handle(): mixed
-    {
-        //
-    }
-}
-
-PHP;
-    }
-
-    private function enumTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-enum {$className}: string
-{
-    case DEFAULT = 'default';
-}
-
-PHP;
-    }
-
-    private function ruleTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use Closure;
-use Illuminate\\Contracts\\Validation\\ValidationRule;
-
-class {$className} implements ValidationRule
-{
-    public function validate(string \$attribute, mixed \$value, Closure \$fail): void
-    {
-        //
-    }
-}
-
-PHP;
-    }
-
-    private function testTemplate(string $namespace, string $className): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-use PHPUnit\\Framework\\TestCase;
-
-class {$className} extends TestCase
-{
-    public function test_example(): void
-    {
-        \$this->assertTrue(true);
-    }
-}
-
-PHP;
-    }
-
-    private function buildRepositoryInterfaceContent(string $namespace, string $interfaceName): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace {$namespace};
-
-interface {$interfaceName}
-{
-    //
-}
-
-PHP;
-    }
-
-    private function migrationTemplate(string $table): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-use Illuminate\\Database\\Migrations\\Migration;
-use Illuminate\\Database\\Schema\\Blueprint;
-use Illuminate\\Support\\Facades\\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        Schema::create('{$table}', function (Blueprint \$table): void {
-            \$table->id();
-            \$table->timestamps();
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('{$table}');
-    }
-};
-
-PHP;
-    }
-
-    private function factoryTemplate(string $moduleName, string $model): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace Modules\\{$moduleName}\\Database\\Factories;
-
-use Illuminate\\Database\\Eloquent\\Factories\\Factory;
-use Modules\\{$moduleName}\\Models\\{$model};
-
-/**
- * @extends Factory<{$model}>
- */
-class {$model}Factory extends Factory
-{
-    protected \$model = {$model}::class;
-
-    public function definition(): array
-    {
-        return [
-            //
-        ];
-    }
-}
-
-PHP;
-    }
-
-    private function seederTemplate(string $moduleName, string $model): string
-    {
-        return <<<PHP
-<?php
-
-declare(strict_types=1);
-
-namespace Modules\\{$moduleName}\\Database\\Seeders;
-
-use Illuminate\\Database\\Seeder;
-
-class {$model}Seeder extends Seeder
-{
-    public function run(): void
-    {
-        //
-    }
-}
-
-PHP;
     }
 }

@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace Libinkk\Modular\Commands;
 
 use Illuminate\Console\Command;
+use Libinkk\Modular\Commands\Concerns\RefreshesModuleCache;
+use Libinkk\Modular\Commands\Concerns\SuggestsModules;
 use Libinkk\Modular\Support\ModuleRepository;
 use RuntimeException;
 
 class DeleteModuleCommand extends Command
 {
+    use RefreshesModuleCache;
+    use SuggestsModules;
+
     protected $signature = 'modular:delete {name : Module name} {--force : Delete without confirmation}';
 
     protected $description = 'Delete a module directory safely.';
@@ -18,6 +23,14 @@ class DeleteModuleCommand extends Command
     {
         $name = (string) $this->argument('name');
         $force = (bool) $this->option('force');
+
+        try {
+            $this->requireModule($repository, $name);
+        } catch (RuntimeException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         if (!$force && !$this->confirm(sprintf('Are you sure you want to delete module [%s]?', $name), false)) {
             $this->warn('Module deletion cancelled.');
@@ -33,6 +46,7 @@ class DeleteModuleCommand extends Command
             return self::FAILURE;
         }
 
+        $this->refreshModuleCache($repository);
         $this->info(sprintf('Module [%s] deleted successfully.', $module->name));
 
         return self::SUCCESS;

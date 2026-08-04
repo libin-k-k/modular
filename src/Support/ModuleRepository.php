@@ -12,7 +12,8 @@ class ModuleRepository
     public function __construct(
         private readonly Filesystem $files,
         private readonly string $modulesPath,
-        private readonly string $cacheFile
+        private readonly string $cacheFile,
+        private readonly ModuleRenamer $renamer,
     ) {
     }
 
@@ -21,7 +22,7 @@ class ModuleRepository
      */
     public function all(bool $useCache = false): array
     {
-        if ($useCache && $this->files->exists($this->cacheFile)) {
+        if ($useCache && $this->hasCache()) {
             /** @var array<string, array<string, mixed>> $cached */
             $cached = (array) $this->files->getRequire($this->cacheFile);
             $modules = [];
@@ -58,6 +59,22 @@ class ModuleRepository
         return $modules;
     }
 
+    /**
+     * @return list<Module>
+     */
+    public function enabled(bool $useCache = false): array
+    {
+        return array_values(array_filter(
+            $this->all($useCache),
+            static fn (Module $module): bool => $module->enabled
+        ));
+    }
+
+    public function hasCache(): bool
+    {
+        return $this->files->exists($this->cacheFile);
+    }
+
     public function findByName(string $name): ?Module
     {
         foreach ($this->all() as $module) {
@@ -84,7 +101,13 @@ class ModuleRepository
         return Module::fromArray($payload, $module->path);
     }
 
-    public function rename(string $from, string $to, bool $force = false): Module
+    /**
+     * @return array{
+     *     module: Module,
+     *     stats: array{files_renamed: int, files_updated: int, total_changes: int}
+     * }
+     */
+    public function rename(string $from, string $to, bool $force = false): array
     {
         $fromModule = $this->findByName($from);
         if ($fromModule === null) {
@@ -101,42 +124,13 @@ class ModuleRepository
             throw new RuntimeException(sprintf('Module [%s] already exists.', $to));
         }
 
-        $newPath = rtrim($this->modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $to;
-        if ($this->files->exists($newPath) && !$force) {
-            throw new RuntimeException(sprintf('Target module path [%s] already exists.', $newPath));
-        }
-        if ($this->files->exists($newPath) && $force) {
-            $this->files->deleteDirectory($newPath);
-        }
-
-        $payload = $this->readManifest($fromModule->path);
-        $previousVersion = (string) ($payload['version'] ?? '1.0.0');
-        $nextVersion = $this->bumpPatchVersion($previousVersion);
-        $timestamp = date(DATE_ATOM);
-
-        $payload['name'] = $to;
-        $payload['version'] = $nextVersion;
-        $payload['rename_log'] = $this->appendListEntry($payload['rename_log'] ?? [], [
-            'from' => $fromModule->name,
-            'to' => $to,
-            'at' => $timestamp,
-            'version_from' => $previousVersion,
-            'version_to' => $nextVersion,
-        ]);
-        $payload['version_history'] = $this->appendListEntry($payload['version_history'] ?? [], [
-            'from' => $previousVersion,
-            'to' => $nextVersion,
-            'at' => $timestamp,
-            'reason' => sprintf('Module renamed from %s to %s', $fromModule->name, $to),
-        ]);
-
-        if (!$this->files->move($fromModule->path, $newPath)) {
-            throw new RuntimeException(sprintf('Could not rename module directory [%s] to [%s].', $fromModule->path, $newPath));
-        }
-
-        $this->writeManifest($newPath, $payload, $to);
-
-        return Module::fromArray($payload, $newPath);
+        return $this->renamer->rename(
+            $fromModule,
+            $to,
+            $this->modulesPath,
+            $this->readManifest($fromModule->path),
+            $force
+        );
     }
 
     public function delete(string $name): Module
@@ -167,7 +161,7 @@ class ModuleRepository
 
     public function clearCache(): bool
     {
-        if (!$this->files->exists($this->cacheFile)) {
+        if (!$this->hasCache()) {
             return false;
         }
 
@@ -204,40 +198,5 @@ class ModuleRepository
         }
 
         $this->files->put($manifestPath, $json . PHP_EOL);
-    }
-
-    /**
-     * @param mixed $value
-     * @param array<string, mixed> $entry
-     * @return list<array<string, mixed>>
-     */
-    private function appendListEntry(mixed $value, array $entry): array
-    {
-        $list = [];
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                if (is_array($item)) {
-                    $list[] = $item;
-                }
-            }
-        }
-
-        $list[] = $entry;
-
-        return $list;
-    }
-
-    private function bumpPatchVersion(string $version): string
-    {
-        $version = trim($version);
-        if (preg_match('/^(\d+)\.(\d+)\.(\d+)$/', $version, $matches) !== 1) {
-            return '1.0.1';
-        }
-
-        $major = (int) $matches[1];
-        $minor = (int) $matches[2];
-        $patch = (int) $matches[3] + 1;
-
-        return sprintf('%d.%d.%d', $major, $minor, $patch);
     }
 }

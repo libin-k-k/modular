@@ -27,6 +27,10 @@ Thumbs.db
 /coverage/
 .phpunit.result.cache
 
+# Local docs / planning (keep out of version control)
+/V1-FEATURES.md
+/v1-missing.md
+
 .cursor/
 .cursor/skills/
 .cursor/skills/**

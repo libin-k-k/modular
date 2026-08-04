@@ -9,24 +9,25 @@ use Libinkk\Modular\Commands\Concerns\ResolvesModuleArguments;
 use Libinkk\Modular\Support\ModuleScaffolder;
 use RuntimeException;
 
-class MakeFactoryCommand extends Command
+class MakeLangCommand extends Command
 {
     use ResolvesModuleArguments;
 
-    protected $signature = 'modular:factory {target : Module name OR factory name} {name? : Factory name when module is first argument} {--module= : Module name when using name-first style} {--m= : Module name alias}';
+    protected $signature = 'modular:lang {target : Module name OR lang file name} {name? : Lang file name when module is first} {--module= : Module name} {--m= : Module name alias} {--locale=en : Locale folder}';
 
-    protected $description = 'Generate a model factory inside a module.';
+    protected $description = 'Generate a module language file with default template.';
 
     public function handle(ModuleScaffolder $scaffolder): int
     {
         try {
             [$module, $name] = $this->resolveModuleAndNameWithHint(
-                'modular:factory User UserFactory  OR  UserFactory --module=User'
+                'modular:lang User messages  OR  messages --module=User'
             );
-            $created = $scaffolder->createFactory(
+            $created = $scaffolder->createLang(
                 (string) config('modular.modules_path', base_path('Modules')),
                 $module,
-                $name
+                $name,
+                (string) $this->option('locale')
             );
         } catch (RuntimeException $exception) {
             $this->error($exception->getMessage());
@@ -34,7 +35,7 @@ class MakeFactoryCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Factory created successfully.');
+        $this->info('Lang file created successfully.');
         foreach ($created as $path) {
             $this->line($path);
         }

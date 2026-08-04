@@ -6,7 +6,7 @@ namespace Libinkk\Modular\Tests\Feature;
 
 use Libinkk\Modular\Tests\TestCase;
 
-class AutomaticModuleRegistrationTest extends TestCase
+class RegistrationTest extends TestCase
 {
     protected function defineEnvironment($app): void
     {
@@ -14,14 +14,14 @@ class AutomaticModuleRegistrationTest extends TestCase
         $app['config']->set('modular.cache_file', __DIR__ . '/../Fixtures/AutoRegister/bootstrap/cache/modular_modules.php');
     }
 
-    public function test_it_registers_enabled_module_provider_and_routes(): void
+    public function test_enabled_module_is_registered_and_accessible(): void
     {
         $this->assertSame('yes', config('autoreg.enabled_module_loaded'));
         $this->assertTrue((bool) config('enabledmodule.settings.sample'));
         $this->get('/enabled-module-ping')->assertOk()->assertSee('enabled');
     }
 
-    public function test_it_skips_disabled_module_provider_and_routes(): void
+    public function test_disabled_module_is_skipped_and_inaccessible(): void
     {
         $this->assertNull(config('autoreg.disabled_module_loaded'));
         $this->get('/disabled-module-ping')->assertNotFound();

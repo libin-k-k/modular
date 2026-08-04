@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Libinkk\Modular\Commands;
 
 use Illuminate\Console\Command;
+use Libinkk\Modular\Commands\Concerns\ResolvesModuleArguments;
 use Libinkk\Modular\Support\ModuleScaffolder;
 use RuntimeException;
 
 abstract class BaseMakeArtifactCommand extends Command
 {
+    use ResolvesModuleArguments;
+
     abstract protected function artifactType(): string;
 
     /**
@@ -17,24 +20,9 @@ abstract class BaseMakeArtifactCommand extends Command
      */
     protected function resolveModuleAndName(): array
     {
-        $target = trim((string) $this->argument('target'));
-        $nameArg = $this->argument('name');
-        $name = is_string($nameArg) ? trim($nameArg) : '';
-        $moduleOption = trim((string) ($this->option('module') ?: $this->option('m') ?: ''));
-
-        if ($target === '') {
-            throw new RuntimeException('Target is required.');
-        }
-
-        if ($moduleOption !== '') {
-            return [$moduleOption, $target];
-        }
-
-        if ($name === '') {
-            throw new RuntimeException('Both module and name are required. Use: modular:' . $this->artifactType() . ' Module Name  OR  Name --module=Module');
-        }
-
-        return [$target, $name];
+        return $this->resolveModuleAndNameWithHint(
+            'modular:' . $this->artifactType() . ' Module Name  OR  Name --module=Module'
+        );
     }
 
     public function handle(ModuleScaffolder $scaffolder): int
