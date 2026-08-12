@@ -25,15 +25,27 @@ abstract class BaseMakeArtifactCommand extends Command
         );
     }
 
+    protected function shouldInjectDependencies(): bool
+    {
+        return true;
+    }
+
     public function handle(ModuleScaffolder $scaffolder): int
     {
         try {
             [$module, $name] = $this->resolveModuleAndName();
-            $created = $scaffolder->createArtifact(
-                (string) config('modular.modules_path', base_path('Modules')),
+            $modulesPath = (string) config('modular.modules_path', base_path('Modules'));
+            $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $module;
+            if (! is_dir($modulePath)) {
+                throw new RuntimeException(sprintf('Module [%s] does not exist.', $module));
+            }
+
+            $result = $scaffolder->createArtifact(
+                $modulesPath,
                 $module,
                 $this->artifactType(),
-                $name
+                $name,
+                $this->shouldInjectDependencies()
             );
         } catch (RuntimeException $exception) {
             $this->error($exception->getMessage());
@@ -42,8 +54,11 @@ abstract class BaseMakeArtifactCommand extends Command
         }
 
         $this->info(sprintf('%s created successfully.', ucfirst($this->artifactType())));
-        foreach ($created as $path) {
+        foreach ($result['paths'] as $path) {
             $this->line($path);
+        }
+        foreach ($result['notices'] as $notice) {
+            $this->comment($notice);
         }
 
         return self::SUCCESS;

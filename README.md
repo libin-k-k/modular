@@ -293,9 +293,11 @@ Namespaces are generated automatically.
 | Module | `php artisan modular:make User` |
 | Controller | `php artisan modular:controller User UserController` |
 | Model | `php artisan modular:model User User` |
+| Model + migration | `php artisan modular:model User User --migration` |
 | Request | `php artisan modular:request User StoreUserRequest` |
 | Service | `php artisan modular:service User UserService` |
 | Repository | `php artisan modular:repository User UserRepository` |
+| Skip DI wiring | `--no-inject` / `--inject` (skip prompt; otherwise asks) |
 | Resource | `php artisan modular:resource User UserResource` |
 | Event | `php artisan modular:event User UserCreated` |
 | Listener | `php artisan modular:listener User SendWelcomeEmail` |
@@ -320,8 +322,23 @@ Automatically generates:
 - Repository
 - Interface
 - Service Provider Binding
+- Matching service (create with DI, or smart-merge into an existing service)
+- Controller constructor wiring when a matching controller already exists
 
----
+Use `--no-inject` to skip sibling wiring without asking (still creates a missing paired service). Use `--inject` to wire without asking.
+
+### Auto dependency injection
+
+```bash
+php artisan modular:service User ProductService
+# asks whether to wire ProductController
+
+php artisan modular:service User ProductService --inject
+php artisan modular:controller User ProductController --inject
+php artisan modular:service User ProductService --no-inject
+```
+
+Wiring is naming-convention based and smart-merges constructor DI without wiping custom methods.
 
 ## CRUD Generator
 

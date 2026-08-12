@@ -41,7 +41,11 @@ class DxCommandsTest extends TestCase
     public function test_repository_creates_service_with_di_and_model_factory_hook(): void
     {
         $this->makeModule('Shop');
-        $this->artisan('modular:repository', ['target' => 'Shop', 'name' => 'ItemRepository'])->assertSuccessful();
+        $this->artisan('modular:repository', [
+            'target' => 'Shop',
+            'name' => 'ItemRepository',
+            '--no-inject' => true,
+        ])->assertSuccessful();
 
         $this->assertModuleFileContains(
             'Shop/Services/ItemService.php',

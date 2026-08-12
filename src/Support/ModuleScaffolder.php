@@ -14,7 +14,13 @@ class ModuleScaffolder
     public function __construct(
         private readonly Filesystem $files,
         private readonly StubFactory $stubs = new StubFactory(),
+        private readonly ?ConstructorInjector $injector = null,
     ) {
+    }
+
+    private function injector(): ConstructorInjector
+    {
+        return $this->injector ?? new ConstructorInjector($this->files);
     }
 
     public function create(string $modulesPath, string $moduleName, array $options = []): string
@@ -301,22 +307,22 @@ PHP;
         $route = Str::kebab(Str::pluralStudly($model));
         $created = [];
 
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'model', $model));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'repository', $model . 'Repository'));
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'model', $model)['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'repository', $model . 'Repository')['paths']);
         // Service is created by repository generator with constructor DI when missing.
         if (!$this->files->exists($modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR . $model . 'Service.php')) {
-            $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'service', $model . 'Service'));
+            $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'service', $model . 'Service')['paths']);
         }
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'controller', $model . 'Controller'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Store' . $model . 'Request'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Update' . $model . 'Request'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'dto', $model . 'Data'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Create' . $model));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Update' . $model));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Delete' . $model));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'resource', $model . 'Resource'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'policy', $model . 'Policy'));
-        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'test', $model . 'CrudTest'));
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'controller', $model . 'Controller')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Store' . $model . 'Request')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'request', 'Update' . $model . 'Request')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'dto', $model . 'Data')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Create' . $model)['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Update' . $model)['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'action', 'Delete' . $model)['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'resource', $model . 'Resource')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'policy', $model . 'Policy')['paths']);
+        $created = array_merge($created, $this->createArtifact($modulesPath, $moduleName, 'test', $model . 'CrudTest')['paths']);
         $created = array_merge($created, $this->createMigration($modulesPath, $moduleName, 'create_' . $table . '_table'));
         $created = array_merge($created, $this->createFactory($modulesPath, $moduleName, $model . 'Factory'));
         $created = array_merge($created, $this->createSeeder($modulesPath, $moduleName, $model . 'Seeder'));
@@ -456,10 +462,15 @@ PHP;
     }
 
     /**
-     * @return list<string> created file paths
+     * @return array{paths: list<string>, notices: list<string>}
      */
-    public function createArtifact(string $modulesPath, string $moduleName, string $type, string $name): array
-    {
+    public function createArtifact(
+        string $modulesPath,
+        string $moduleName,
+        string $type,
+        string $name,
+        bool $inject = true
+    ): array {
         $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
         if (!$this->files->isDirectory($modulePath)) {
             throw new RuntimeException(sprintf('Module [%s] does not exist.', $moduleName));
@@ -517,12 +528,14 @@ PHP;
         $namespace = implode('\\', array_filter($namespaceParts, static fn (string $value): bool => $value !== ''));
 
         $created = [];
+        $notices = [];
 
         if ($type === 'repository') {
             $interfaceDir = $modulePath . DIRECTORY_SEPARATOR . 'Interfaces' . DIRECTORY_SEPARATOR . $nestedPath;
             $this->files->ensureDirectoryExists($interfaceDir);
             $interfaceName = str_ends_with($className, 'Repository') ? $className . 'Interface' : $className . 'RepositoryInterface';
             $interfaceNamespace = implode('\\', array_filter(array_merge(['Modules', $moduleName, 'Interfaces'], $parts), static fn (string $value): bool => $value !== ''));
+            $interfaceFqcn = $interfaceNamespace . '\\' . $interfaceName;
             $interfacePath = $interfaceDir . $interfaceName . '.php';
             if (!$this->files->exists($interfacePath)) {
                 $this->files->put($interfacePath, $this->stubs->buildRepositoryInterfaceContent($interfaceNamespace, $interfaceName));
@@ -535,37 +548,141 @@ PHP;
             $this->bindRepositoryInProvider(
                 $modulePath,
                 $moduleName,
-                $interfaceNamespace . '\\' . $interfaceName,
+                $interfaceFqcn,
                 $namespace . '\\' . $className
             );
 
-            $serviceBase = str_ends_with($className, 'Repository')
-                ? substr($className, 0, -strlen('Repository'))
-                : $className;
+            $serviceBase = $this->resourceBase($className, 'Repository');
             if ($serviceBase !== '') {
                 $serviceName = implode('/', array_merge($parts, [$serviceBase . 'Service']));
                 $servicePath = $modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR
                     . ($nestedPath !== '' ? $nestedPath : '')
                     . $serviceBase . 'Service.php';
+
+                // Always create a missing paired service with repository DI (scaffold completeness).
                 if (!$this->files->exists($servicePath)) {
                     $serviceCreated = $this->createServiceWithRepository(
                         $modulesPath,
                         $moduleName,
                         $serviceName,
-                        $interfaceNamespace . '\\' . $interfaceName
+                        $interfaceFqcn
                     );
                     $created = array_merge($created, $serviceCreated);
+                } elseif ($inject) {
+                    // --no-inject skips mutating an existing service.
+                    if ($this->injector()->inject($servicePath, $interfaceFqcn, 'repository')) {
+                        $notices[] = sprintf('Injected %s into %s', $interfaceFqcn, $this->relativeModulePath($modulePath, $servicePath));
+                    }
+                }
+
+                if ($inject) {
+                    $serviceFqcn = implode('\\', array_filter(
+                        array_merge(['Modules', $moduleName, 'Services'], $parts, [$serviceBase . 'Service']),
+                        static fn (string $value): bool => $value !== ''
+                    ));
+                    $notices = array_merge(
+                        $notices,
+                        $this->wireServiceIntoController($modulePath, $moduleName, $parts, $serviceBase, $serviceFqcn)
+                    );
                 }
             }
 
-            return $created;
+            return ['paths' => $created, 'notices' => $notices];
         }
 
         $content = $this->stubs->render($type, $namespace, $className, $moduleName);
         $this->files->put($filePath, $content);
         $created[] = $filePath;
 
-        return $created;
+        if ($inject && $type === 'service') {
+            $serviceBase = $this->resourceBase($className, 'Service');
+            $serviceFqcn = $namespace . '\\' . $className;
+            $notices = array_merge(
+                $notices,
+                $this->wireServiceIntoController($modulePath, $moduleName, $parts, $serviceBase, $serviceFqcn)
+            );
+        }
+
+        if ($inject && $type === 'controller') {
+            $resourceBase = $this->resourceBase($className, 'Controller');
+            if ($resourceBase !== '') {
+                $servicePath = $modulePath . DIRECTORY_SEPARATOR . 'Services' . DIRECTORY_SEPARATOR
+                    . ($nestedPath !== '' ? $nestedPath : '')
+                    . $resourceBase . 'Service.php';
+                if ($this->files->exists($servicePath)) {
+                    $serviceFqcn = implode('\\', array_filter(
+                        array_merge(['Modules', $moduleName, 'Services'], $parts, [$resourceBase . 'Service']),
+                        static fn (string $value): bool => $value !== ''
+                    ));
+                    if ($this->injector()->inject($filePath, $serviceFqcn, 'service')) {
+                        $notices[] = sprintf('Injected %s into %s', $serviceFqcn, $this->relativeModulePath($modulePath, $filePath));
+                    }
+                }
+            }
+        }
+
+        return ['paths' => $created, 'notices' => $notices];
+    }
+
+    /**
+     * @param list<string> $parts nested path segments under Controllers/Services
+     * @return list<string>
+     */
+    private function wireServiceIntoController(
+        string $modulePath,
+        string $moduleName,
+        array $parts,
+        string $resourceBase,
+        string $serviceFqcn
+    ): array {
+        if ($resourceBase === '') {
+            return [];
+        }
+
+        $nestedPath = $parts !== [] ? implode(DIRECTORY_SEPARATOR, $parts) . DIRECTORY_SEPARATOR : '';
+        $controllerName = $resourceBase . 'Controller';
+        $controllerPath = $modulePath . DIRECTORY_SEPARATOR . 'Controllers' . DIRECTORY_SEPARATOR
+            . $nestedPath . $controllerName . '.php';
+
+        if (!$this->files->exists($controllerPath)) {
+            $hintName = implode('/', array_merge($parts, [$controllerName]));
+
+            return [
+                sprintf(
+                    'Tip: no %s found — php artisan modular:controller %s %s',
+                    $controllerName,
+                    $moduleName,
+                    $hintName
+                ),
+            ];
+        }
+
+        if ($this->injector()->inject($controllerPath, $serviceFqcn, 'service')) {
+            return [
+                sprintf('Injected %s into %s', $serviceFqcn, $this->relativeModulePath($modulePath, $controllerPath)),
+            ];
+        }
+
+        return [];
+    }
+
+    private function resourceBase(string $className, string $suffix): string
+    {
+        if (str_ends_with($className, $suffix)) {
+            return substr($className, 0, -strlen($suffix)) ?: '';
+        }
+
+        return $className;
+    }
+
+    private function relativeModulePath(string $modulePath, string $absolutePath): string
+    {
+        $prefix = rtrim($modulePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if (str_starts_with($absolutePath, $prefix)) {
+            return str_replace('\\', '/', substr($absolutePath, strlen($prefix)));
+        }
+
+        return str_replace('\\', '/', $absolutePath);
     }
 
     /**

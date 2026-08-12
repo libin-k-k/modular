@@ -64,7 +64,11 @@ class GeneratorTest extends TestCase
         ];
 
         foreach ($cases as [$command, $name, $path, $needles]) {
-            $this->artisan($command, ['target' => 'App', 'name' => $name])->assertSuccessful();
+            $params = ['target' => 'App', 'name' => $name];
+            if (in_array($command, ['modular:controller', 'modular:service', 'modular:repository'], true)) {
+                $params['--no-inject'] = true;
+            }
+            $this->artisan($command, $params)->assertSuccessful();
             $this->assertModuleFileContains($path, ...$needles);
         }
 
@@ -105,11 +109,23 @@ class GeneratorTest extends TestCase
 
     public function test_multi_style_flags_and_crud_scaffold(): void
     {
-        $this->artisan('modular:controller', ['target' => 'API/V1/ItemController', '--module' => 'App'])->assertSuccessful();
+        $this->artisan('modular:controller', [
+            'target' => 'API/V1/ItemController',
+            '--module' => 'App',
+            '--no-inject' => true,
+        ])->assertSuccessful();
         $this->assertFileExists($this->modulePath('App/Controllers/API/V1/ItemController.php'));
 
         $this->artisan('modular:model', ['target' => 'Item', '--m' => 'App'])->assertSuccessful();
         $this->assertFileExists($this->modulePath('App/Models/Item.php'));
+
+        $this->artisan('modular:model', [
+            'target' => 'App',
+            'name' => 'Category',
+            '--migration' => true,
+        ])->assertSuccessful();
+        $this->assertFileExists($this->modulePath('App/Models/Category.php'));
+        $this->assertNotEmpty(glob($this->modulePath('App/Database/Migrations/*_create_categories_table.php')) ?: []);
 
         $this->artisan('modular:crud', ['target' => 'Product', '--module' => 'App'])->assertSuccessful();
 

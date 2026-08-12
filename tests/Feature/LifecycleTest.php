@@ -41,7 +41,11 @@ class LifecycleTest extends TestCase
 
     public function test_rename_updates_files_namespaces_and_json_stats(): void
     {
-        $this->artisan('modular:controller', ['target' => 'Catalog', 'name' => 'ItemController'])->assertSuccessful();
+        $this->artisan('modular:controller', [
+            'target' => 'Catalog',
+            'name' => 'ItemController',
+            '--no-inject' => true,
+        ])->assertSuccessful();
 
         $this->artisan('modular:rename', ['from' => 'Catalog', 'to' => 'Store', '--force' => true])
             ->expectsOutputToContain('Files renamed:')
