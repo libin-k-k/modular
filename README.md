@@ -11,8 +11,6 @@ Build large Laravel apps as **business modules** under `Modules/`. The package d
 ```bash
 composer require libinkk/modular
 php artisan modular:install
-# add "Modules\\": "Modules/" to composer.json autoload, then:
-composer dump-autoload
 php artisan modular:make Catalog
 php artisan modular:crud Catalog Product --api
 ```
@@ -130,37 +128,24 @@ What this does:
 1. Creates the `Modules/` directory
 2. Publishes `config/modular.php`
 3. Generates the module cache file
+4. Adds `"Modules\\": "Modules/"` to your app `composer.json` automatically
+5. Runs `composer dump-autoload`
 
-It does **not** edit your app `composer.json`.
-
-### Step 3: Add PSR-4 autoload
-
-In your application `composer.json`:
-
-```json
-{
-  "autoload": {
-    "psr-4": {
-      "App\\": "app/",
-      "Modules\\": "Modules/"
-    }
-  }
-}
-```
-
-### Step 4: Dump autoload
+Optional flags:
 
 ```bash
-composer dump-autoload
+php artisan modular:install --no-composer   # do not edit composer.json
+php artisan modular:install --no-dump       # edit composer.json, skip dump-autoload
+php artisan modular:install --force         # overwrite published config
 ```
 
-### Step 5: Create your first module
+### Step 3: Create your first module
 
 ```bash
 php artisan modular:make User
 ```
 
-### Step 6: Verify health
+### Step 4: Verify health
 
 ```bash
 php artisan modular:list
@@ -188,8 +173,6 @@ This tutorial builds a complete Blog module with Post CRUD API.
 ```bash
 composer require libinkk/modular
 php artisan modular:install
-# add Modules\\ PSR-4, then:
-composer dump-autoload
 ```
 
 ### Step 2: Create the Blog module
@@ -991,7 +974,7 @@ GitHub Actions workflow: [`.github/workflows/tests.yml`](.github/workflows/tests
 
 | Problem | Fix |
 | --- | --- |
-| Class not found under `Modules\` | Add PSR-4 `"Modules\\": "Modules/"` and `composer dump-autoload` |
+| Class not found under `Modules\` | Run `php artisan modular:install` (or add PSR-4 `"Modules\\": "Modules/"` and `composer dump-autoload`) |
 | Module routes / provider missing | Check `module.json` → `"enabled": true`, then `modular:list` / `modular:doctor` |
 | Disabled module still loads | Clear opcache / restart workers; rebuild cache: `modular:clear && modular:cache` |
 | Doctor fails on dependencies | Create or enable listed dependency modules |
@@ -1004,7 +987,7 @@ GitHub Actions workflow: [`.github/workflows/tests.yml`](.github/workflows/tests
 ## FAQ
 
 **Does install edit my `composer.json`?**  
-No. You add the `Modules\\` PSR-4 entry yourself.
+Yes. By default it adds `"Modules\\": "Modules/"` under `autoload.psr-4` and runs `composer dump-autoload`. Use `--no-composer` to skip.
 
 **Do I register providers in `bootstrap/providers.php`?**  
 No for module providers. Discovery handles enabled modules.

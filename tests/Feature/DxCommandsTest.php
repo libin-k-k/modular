@@ -88,4 +88,56 @@ class DxCommandsTest extends TestCase
         $this->assertDirectoryExists($this->modulesPath);
         $this->assertFileExists($this->cacheFile);
     }
+
+    public function test_install_adds_modules_psr4_to_composer_json(): void
+    {
+        $composerPath = base_path('composer.json');
+        $original = $this->files->get($composerPath);
+
+        try {
+            $decoded = json_decode($original, true);
+            unset($decoded['autoload']['psr-4']['Modules\\']);
+            $this->files->put(
+                $composerPath,
+                json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL
+            );
+
+            $this->artisan('modular:install', ['--no-dump' => true])
+                ->expectsOutputToContain('Composer PSR-4 added')
+                ->assertSuccessful();
+
+            $updated = json_decode($this->files->get($composerPath), true);
+            $this->assertSame('Modules/', $updated['autoload']['psr-4']['Modules\\'] ?? null);
+
+            $this->artisan('modular:install', ['--no-dump' => true])
+                ->expectsOutputToContain('Composer PSR-4 Modules\\ mapping already present')
+                ->assertSuccessful();
+        } finally {
+            $this->files->put($composerPath, $original);
+        }
+    }
+
+    public function test_install_can_skip_composer_edit(): void
+    {
+        $composerPath = base_path('composer.json');
+        $original = $this->files->get($composerPath);
+
+        try {
+            $decoded = json_decode($original, true);
+            unset($decoded['autoload']['psr-4']['Modules\\']);
+            $this->files->put(
+                $composerPath,
+                json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL
+            );
+
+            $this->artisan('modular:install', ['--no-composer' => true])
+                ->expectsOutputToContain('Skipped Composer PSR-4 update')
+                ->assertSuccessful();
+
+            $updated = json_decode($this->files->get($composerPath), true);
+            $this->assertArrayNotHasKey('Modules\\', $updated['autoload']['psr-4'] ?? []);
+        } finally {
+            $this->files->put($composerPath, $original);
+        }
+    }
 }
