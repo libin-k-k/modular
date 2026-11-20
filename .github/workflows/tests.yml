@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         # Package requires php ^8.1; PHP 8.6.0 is the latest stable
-        # (released 19 Nov 2026 — https://www.php.net/releases/8_6_0.php)
+        # (released 19 Nov 2026: https://www.php.net/releases/8_6_0.php)
         php:
           - '8.1'
           - '8.2'
@@ -51,12 +51,18 @@ jobs:
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-php-${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
           restore-keys: |
             ${{ runner.os }}-php-${{ matrix.php }}-composer-
+
+      # PHP 8.1 resolves to Laravel 10 / testbench 8. Composer currently blocks
+      # every Laravel 10 release via security advisories, so allow install for CI.
+      - name: Allow Laravel 10 installs on PHP 8.1
+        if: matrix.php == '8.1'
+        run: composer config audit.block-insecure false
 
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress
