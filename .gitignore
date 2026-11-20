@@ -26,6 +26,9 @@ Thumbs.db
 /public/hot
 /coverage/
 .phpunit.result.cache
+.phpunit.cache/
+/tests/Fixtures/Modules/
+/tests/Fixtures/bootstrap/
 
 # Local docs / planning (keep out of version control)
 /V1-FEATURES.md

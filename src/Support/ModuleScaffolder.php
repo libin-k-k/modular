@@ -25,7 +25,8 @@ class ModuleScaffolder
 
     public function create(string $modulesPath, string $moduleName, array $options = []): string
     {
-        $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
+        $moduleName = ModuleIdentity::assertModuleName($moduleName);
+        $modulePath = ModuleIdentity::modulePath($modulesPath, $moduleName);
         if ($this->files->exists($modulePath)) {
             throw new RuntimeException(sprintf('Module [%s] already exists.', $moduleName));
         }
@@ -219,14 +220,15 @@ PHP;
     public function createConfig(string $modulesPath, string $moduleName, string $name): array
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
-        $name = Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/')));
-        if ($name === '') {
-            throw new RuntimeException('Config name is required.');
-        }
+        $name = ModuleIdentity::assertResourcePath(
+            Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/'))),
+            'Config name'
+        );
 
         $dir = $modulePath . DIRECTORY_SEPARATOR . 'Config';
         $this->files->ensureDirectoryExists($dir);
         $path = $dir . DIRECTORY_SEPARATOR . $name . '.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $path);
         if ($this->files->exists($path)) {
             throw new RuntimeException(sprintf('Config [%s] already exists.', $name));
         }
@@ -242,15 +244,19 @@ PHP;
     public function createLang(string $modulesPath, string $moduleName, string $name, string $locale = 'en'): array
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
-        $name = Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/')));
-        $locale = trim($locale) !== '' ? trim($locale) : 'en';
-        if ($name === '') {
-            throw new RuntimeException('Lang file name is required.');
-        }
+        $name = ModuleIdentity::assertResourcePath(
+            Str::snake(basename(trim(str_replace(['\\', '.php'], ['/', ''], $name), '/'))),
+            'Lang file name'
+        );
+        $locale = ModuleIdentity::assertResourcePath(
+            trim($locale) !== '' ? trim($locale) : 'en',
+            'Lang locale'
+        );
 
         $dir = $modulePath . DIRECTORY_SEPARATOR . 'Lang' . DIRECTORY_SEPARATOR . $locale;
         $this->files->ensureDirectoryExists($dir);
         $path = $dir . DIRECTORY_SEPARATOR . $name . '.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $path);
         if ($this->files->exists($path)) {
             throw new RuntimeException(sprintf('Lang file [%s/%s] already exists.', $locale, $name));
         }
@@ -267,17 +273,16 @@ PHP;
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
         $name = trim(str_replace('\\', '/', $name), '/');
-        if ($name === '') {
-            throw new RuntimeException('View name is required.');
-        }
-
         $name = str_ends_with($name, '.blade.php') ? substr($name, 0, -10) : $name;
+        $name = ModuleIdentity::assertResourcePath($name, 'View name');
+
         $parts = array_values(array_filter(explode('/', $name), static fn (string $part): bool => $part !== ''));
         $viewName = array_pop($parts) ?: 'index';
         $nested = $parts !== [] ? implode(DIRECTORY_SEPARATOR, $parts) . DIRECTORY_SEPARATOR : '';
         $dir = $modulePath . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . $nested;
         $this->files->ensureDirectoryExists($dir);
         $path = $dir . $viewName . '.blade.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $path);
         if ($this->files->exists($path)) {
             throw new RuntimeException(sprintf('View [%s] already exists.', $name));
         }
@@ -292,15 +297,9 @@ PHP;
      */
     public function createCrud(string $modulesPath, string $moduleName, string $resourceName, bool $api = false): array
     {
-        $resourceName = trim($resourceName);
-        if ($resourceName === '') {
-            throw new RuntimeException('Resource name is required.');
-        }
-
-        $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
-        if (!$this->files->isDirectory($modulePath)) {
-            throw new RuntimeException(sprintf('Module [%s] does not exist.', $moduleName));
-        }
+        $moduleName = ModuleIdentity::assertModuleName($moduleName);
+        $resourceName = ModuleIdentity::assertArtifactName($resourceName);
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
 
         $model = Str::studly(Str::singular($resourceName));
         $table = Str::snake(Str::pluralStudly($model));
@@ -363,14 +362,16 @@ PHP;
     public function createMigration(string $modulesPath, string $moduleName, string $name): array
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
-        $name = trim(str_replace(['\\', '.php'], ['/', ''], $name), '/');
-        if ($name === '') {
-            throw new RuntimeException('Migration name is required.');
-        }
+        $name = ModuleIdentity::assertResourcePath(
+            trim(str_replace(['\\', '.php'], ['/', ''], $name), '/'),
+            'Migration name'
+        );
 
         $base = Str::snake(basename($name));
+        $base = ModuleIdentity::assertResourcePath($base, 'Migration name');
         if (!str_starts_with($base, 'create_') && !str_contains($base, '_table')) {
             $base = 'create_' . Str::snake(Str::pluralStudly(Str::studly($base))) . '_table';
+            $base = ModuleIdentity::assertResourcePath($base, 'Migration name');
         }
 
         $table = 'table';
@@ -398,20 +399,22 @@ PHP;
     public function createFactory(string $modulesPath, string $moduleName, string $name): array
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
-        $name = trim(str_replace(['\\', '.php'], ['/', ''], $name), '/');
-        if ($name === '') {
-            throw new RuntimeException('Factory name is required.');
-        }
+        $name = ModuleIdentity::assertResourcePath(
+            trim(str_replace(['\\', '.php'], ['/', ''], $name), '/'),
+            'Factory name'
+        );
 
-        $className = Str::studly(basename($name));
+        $className = ModuleIdentity::assertArtifactName(Str::studly(basename($name)));
         if (!str_ends_with($className, 'Factory')) {
             $className .= 'Factory';
+            $className = ModuleIdentity::assertArtifactName($className);
         }
         $model = Str::beforeLast($className, 'Factory') ?: $className;
 
         $targetDir = $modulePath . DIRECTORY_SEPARATOR . 'Database' . DIRECTORY_SEPARATOR . 'Factories';
         $this->files->ensureDirectoryExists($targetDir);
         $filePath = $targetDir . DIRECTORY_SEPARATOR . $className . '.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $filePath);
 
         if ($this->files->exists($filePath)) {
             throw new RuntimeException(sprintf('Factory [%s] already exists.', $className));
@@ -428,19 +431,21 @@ PHP;
     public function createSeeder(string $modulesPath, string $moduleName, string $name): array
     {
         $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
-        $name = trim(str_replace(['\\', '.php'], ['/', ''], $name), '/');
-        if ($name === '') {
-            throw new RuntimeException('Seeder name is required.');
-        }
+        $name = ModuleIdentity::assertResourcePath(
+            trim(str_replace(['\\', '.php'], ['/', ''], $name), '/'),
+            'Seeder name'
+        );
 
-        $className = Str::studly(basename($name));
+        $className = ModuleIdentity::assertArtifactName(Str::studly(basename($name)));
         if (!str_ends_with($className, 'Seeder')) {
             $className .= 'Seeder';
+            $className = ModuleIdentity::assertArtifactName($className);
         }
 
         $targetDir = $modulePath . DIRECTORY_SEPARATOR . 'Database' . DIRECTORY_SEPARATOR . 'Seeders';
         $this->files->ensureDirectoryExists($targetDir);
         $filePath = $targetDir . DIRECTORY_SEPARATOR . $className . '.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $filePath);
 
         if ($this->files->exists($filePath)) {
             throw new RuntimeException(sprintf('Seeder [%s] already exists.', $className));
@@ -453,7 +458,8 @@ PHP;
 
     private function assertModuleExists(string $modulesPath, string $moduleName): string
     {
-        $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
+        $moduleName = ModuleIdentity::assertModuleName($moduleName);
+        $modulePath = ModuleIdentity::modulePath($modulesPath, $moduleName);
         if (!$this->files->isDirectory($modulePath)) {
             throw new RuntimeException(sprintf('Module [%s] does not exist.', $moduleName));
         }
@@ -471,15 +477,10 @@ PHP;
         string $name,
         bool $inject = true
     ): array {
-        $modulePath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $moduleName;
-        if (!$this->files->isDirectory($modulePath)) {
-            throw new RuntimeException(sprintf('Module [%s] does not exist.', $moduleName));
-        }
+        $moduleName = ModuleIdentity::assertModuleName($moduleName);
+        $modulePath = $this->assertModuleExists($modulesPath, $moduleName);
 
-        $name = trim(str_replace('\\', '/', $name), '/');
-        if ($name === '') {
-            throw new RuntimeException('Artifact name is required.');
-        }
+        $name = ModuleIdentity::assertArtifactName($name);
 
         $map = [
             'controller' => 'Controllers',
@@ -520,6 +521,7 @@ PHP;
         $this->files->ensureDirectoryExists($targetDir);
 
         $filePath = $targetDir . $className . '.php';
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $filePath);
         if ($this->files->exists($filePath)) {
             throw new RuntimeException(sprintf('%s [%s] already exists.', ucfirst($type), $name));
         }

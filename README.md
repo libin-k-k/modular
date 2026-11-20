@@ -967,6 +967,7 @@ GitHub Actions workflow: [`.github/workflows/tests.yml`](.github/workflows/tests
 8. **Pick one command syntax style** and stick to it in the team.
 9. **Migrate domains gradually** from a legacy `app/` into `Modules/`.
 10. **Commit generated structure**. Customize business logic in Services/Actions.
+11. **Use valid PHP identifiers** for module and class names. Path traversal / absolute paths are rejected.
 
 ---
 
@@ -981,6 +982,7 @@ GitHub Actions workflow: [`.github/workflows/tests.yml`](.github/workflows/tests
 | Rename conflict | Use `--force` only if overwriting the target is intentional |
 | Cache stale after manual file edits | `php artisan modular:clear` then `modular:cache` |
 | Generators fail "module not found" | Create the module first with `modular:make` |
+| Make/rename fails on odd names | Use a PHP identifier like `Orders` (no `../`, spaces, or `/`) |
 
 ---
 

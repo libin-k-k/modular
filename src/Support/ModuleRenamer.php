@@ -27,16 +27,15 @@ final class ModuleRenamer
         array $manifest,
         bool $force = false
     ): array {
-        $to = trim($to);
-        if ($to === '') {
-            throw new RuntimeException('New module name is required.');
-        }
+        $to = ModuleIdentity::assertModuleName($to);
+        ModuleIdentity::assertInsideModulesPath($modulesPath, $fromModule->path);
 
-        $newPath = rtrim($modulesPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $to;
+        $newPath = ModuleIdentity::modulePath($modulesPath, $to);
         if ($this->files->exists($newPath) && !$force) {
             throw new RuntimeException(sprintf('Target module path [%s] already exists.', $newPath));
         }
         if ($this->files->exists($newPath) && $force) {
+            ModuleIdentity::assertInsideModulesPath($modulesPath, $newPath);
             $this->files->deleteDirectory($newPath);
         }
 

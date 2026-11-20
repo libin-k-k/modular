@@ -86,7 +86,7 @@ class ModuleRepositoryTest extends TestCase
         $this->writeModule('From');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('New module name is required.');
+        $this->expectExceptionMessage('Module name is required.');
 
         $this->repo->rename('From', '   ');
     }

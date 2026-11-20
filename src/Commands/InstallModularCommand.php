@@ -6,7 +6,9 @@ namespace Libinkk\Modular\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use Libinkk\Modular\Support\ComposerModulesAutoload;
 use Libinkk\Modular\Support\ModuleRepository;
+use RuntimeException;
 use Symfony\Component\Process\Process;
 
 class InstallModularCommand extends Command
@@ -53,60 +55,22 @@ class InstallModularCommand extends Command
 
     private function ensureComposerAutoload(Filesystem $files, string $composerPath, string $modulesPath): void
     {
-        if (!$files->exists($composerPath)) {
-            $this->warn('composer.json not found. Add Modules\\ PSR-4 manually in your app.');
-            $this->printPsr4Hint($this->relativeModulesAutoloadPath($modulesPath));
-
-            return;
-        }
-
-        $raw = $files->get($composerPath);
-        $composer = json_decode($raw, true);
-        if (!is_array($composer)) {
-            $this->error('composer.json is invalid JSON. Fix it, then re-run modular:install.');
-            $this->printPsr4Hint($this->relativeModulesAutoloadPath($modulesPath));
-
-            return;
-        }
-
         $autoloadPath = $this->relativeModulesAutoloadPath($modulesPath);
-        $existing = $composer['autoload']['psr-4']['Modules\\'] ?? null;
 
-        if (is_string($existing) && rtrim(str_replace('\\', '/', $existing), '/') . '/' === $autoloadPath) {
+        try {
+            $result = (new ComposerModulesAutoload($files))->ensure($composerPath, $autoloadPath);
+        } catch (RuntimeException $exception) {
+            $this->error($exception->getMessage());
+            $this->printPsr4Hint($autoloadPath);
+
+            return;
+        }
+
+        if ($result['changed']) {
+            $this->line("✔ Composer PSR-4 added: \"Modules\\\\\": \"{$result['mapping']}\"");
+        } else {
             $this->line('✔ Composer PSR-4 Modules\\ mapping already present');
-            $this->dumpAutoloadIfNeeded();
-
-            return;
         }
-
-        $composer['autoload'] ??= [];
-        if (!is_array($composer['autoload'])) {
-            $this->error('composer.json autoload must be an object/array.');
-
-            return;
-        }
-
-        $composer['autoload']['psr-4'] ??= [];
-        if (!is_array($composer['autoload']['psr-4'])) {
-            $this->error('composer.json autoload.psr-4 must be an object/array.');
-
-            return;
-        }
-
-        $composer['autoload']['psr-4']['Modules\\'] = $autoloadPath;
-
-        $encoded = json_encode(
-            $composer,
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-        if ($encoded === false) {
-            $this->error('Could not encode composer.json.');
-
-            return;
-        }
-
-        $files->put($composerPath, $encoded . PHP_EOL);
-        $this->line("✔ Composer PSR-4 added: \"Modules\\\\\": \"{$autoloadPath}\"");
 
         $this->dumpAutoloadIfNeeded();
     }

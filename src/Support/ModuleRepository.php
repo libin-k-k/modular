@@ -88,10 +88,13 @@ class ModuleRepository
 
     public function setEnabled(string $name, bool $enabled): Module
     {
+        $name = ModuleIdentity::assertModuleName($name);
         $module = $this->findByName($name);
         if ($module === null) {
             throw new RuntimeException(sprintf('Module [%s] was not found.', $name));
         }
+
+        ModuleIdentity::assertInsideModulesPath($this->modulesPath, $module->path);
 
         $payload = $this->readManifest($module->path);
         $payload['enabled'] = $enabled;
@@ -109,15 +112,15 @@ class ModuleRepository
      */
     public function rename(string $from, string $to, bool $force = false): array
     {
+        $from = ModuleIdentity::assertModuleName($from);
+        $to = ModuleIdentity::assertModuleName($to);
+
         $fromModule = $this->findByName($from);
         if ($fromModule === null) {
             throw new RuntimeException(sprintf('Module [%s] was not found.', $from));
         }
 
-        $to = trim($to);
-        if ($to === '') {
-            throw new RuntimeException('New module name is required.');
-        }
+        ModuleIdentity::assertInsideModulesPath($this->modulesPath, $fromModule->path);
 
         $targetModule = $this->findByName($to);
         if ($targetModule !== null && !$force) {
@@ -135,10 +138,13 @@ class ModuleRepository
 
     public function delete(string $name): Module
     {
+        $name = ModuleIdentity::assertModuleName($name);
         $module = $this->findByName($name);
         if ($module === null) {
             throw new RuntimeException(sprintf('Module [%s] was not found.', $name));
         }
+
+        ModuleIdentity::assertInsideModulesPath($this->modulesPath, $module->path);
 
         if (!$this->files->deleteDirectory($module->path)) {
             throw new RuntimeException(sprintf('Could not delete module directory [%s].', $module->path));
